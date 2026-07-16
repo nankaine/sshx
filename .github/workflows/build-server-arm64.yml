@@ -1,0 +1,185 @@
+name: Build sshx-server (ARM64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+
+jobs:
+  build:
+
+    name: Build sshx-server linux arm64
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      # -----------------------------
+      # Checkout
+      # -----------------------------
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+
+      # -----------------------------
+      # Read version
+      # -----------------------------
+      - name: Read Version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+          echo "Detected version: $VERSION"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+
+      # -----------------------------
+      # protoc
+      # -----------------------------
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+
+      # -----------------------------
+      # Rust ARM64 target
+      # -----------------------------
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+
+      # -----------------------------
+      # Setup Node frontend
+      # -----------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+
+      - name: Install frontend dependencies
+        run: |
+          npm ci
+
+
+      - name: Build frontend
+        run: |
+          npm run build
+
+
+      # -----------------------------
+      # Cargo cache
+      # -----------------------------
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+
+      # -----------------------------
+      # Install Zig
+      # -----------------------------
+      - name: Install Zig
+        shell: bash
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.13.0
+
+          wget \
+          https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf \
+          zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo \
+          "$PWD/zig-linux-x86_64-${ZIG_VERSION}" \
+          >> "$GITHUB_PATH"
+
+
+      # -----------------------------
+      # cargo-zigbuild
+      # -----------------------------
+      - name: Install cargo-zigbuild
+        run: |
+          cargo install cargo-zigbuild --locked
+
+
+      - name: Show tools
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
+
+
+      # -----------------------------
+      # Build sshx-server ARM64
+      # -----------------------------
+      - name: Build sshx-server
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo zigbuild \
+            --release \
+            --target aarch64-unknown-linux-musl \
+            --bin sshx-server
+
+
+      # -----------------------------
+      # Strip
+      # -----------------------------
+      - name: Strip binary
+        run: |
+          strip \
+          target/aarch64-unknown-linux-musl/release/sshx-server || true
+
+
+      # -----------------------------
+      # Verify
+      # -----------------------------
+      - name: Verify binary
+        run: |
+          file \
+          target/aarch64-unknown-linux-musl/release/sshx-server
+
+          ldd \
+          target/aarch64-unknown-linux-musl/release/sshx-server || true
+
+
+      # -----------------------------
+      # Package
+      # -----------------------------
+      - name: Package
+        shell: bash
+        run: |
+          mkdir dist
+
+          cp \
+          target/aarch64-unknown-linux-musl/release/sshx-server \
+          dist/
+
+
+          cp -r build dist/
+
+
+          tar \
+          -C dist \
+          -czf \
+          sshx-server-linux-arm64-v${{ steps.version.outputs.version }}.tar.gz \
+          .
+
+
+      # -----------------------------
+      # Upload
+      # -----------------------------
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+
+          name: sshx-server-linux-arm64-v${{ steps.version.outputs.version }}
+
+          path: sshx-server-linux-arm64-v${{ steps.version.outputs.version }}.tar.gz
