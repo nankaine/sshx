@@ -1,0 +1,11 @@
+name: Build ARMv7
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      target: armv7-unknown-linux-musleabihf
+      artifact: sshx-linux-armv7
