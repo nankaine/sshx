@@ -1,4 +1,4 @@
-name: Build sshx All(Static Linux)
+name: Build Static sshx All
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.name }}
+    name: Build (${{ matrix.name }})
 
     runs-on: ubuntu-latest
 
@@ -19,67 +19,55 @@ jobs:
         include:
           - name: linux-amd64
             target: x86_64-unknown-linux-musl
-            artifact: sshx-linux-amd64
+            binary: sshx-linux-amd64
 
           - name: linux-arm64
             target: aarch64-unknown-linux-musl
-            artifact: sshx-linux-arm64
+            binary: sshx-linux-arm64
 
           - name: linux-armv7
             target: armv7-unknown-linux-musleabihf
-            artifact: sshx-linux-armv7
+            binary: sshx-linux-armv7
 
           - name: linux-armv6
             target: arm-unknown-linux-musleabihf
-            artifact: sshx-linux-armv6
+            binary: sshx-linux-armv6
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: |
-            x86_64-unknown-linux-musl
-            aarch64-unknown-linux-musl
-            armv7-unknown-linux-musleabihf
-            arm-unknown-linux-musleabihf
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          version: latest
-
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild
+      - name: Install protoc (Host)
+        uses: arduino/setup-protoc@v3
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Show versions
+      - name: Install Cross
+        run: cargo install cross --locked
+
+      - name: Show Versions
         run: |
           rustc --version
           cargo --version
-          zig version
+          cross --version
           protoc --version
 
       - name: Build
         env:
-          CARGO_PROFILE_RELEASE_STRIP: symbols
+          CROSS_CONFIG: Cross.toml
         run: |
-          cargo zigbuild \
+          cross build \
             --release \
             --target ${{ matrix.target }} \
             -p sshx
 
-      - name: Verify
+      - name: Verify Binary
         run: |
           file target/${{ matrix.target }}/release/sshx
-          ldd target/${{ matrix.target }}/release/sshx || true
 
       - name: Package
         run: |
@@ -87,16 +75,17 @@ jobs:
 
           cp \
             target/${{ matrix.target }}/release/sshx \
-            dist/${{ matrix.artifact }}
+            dist/${{ matrix.binary }}
 
-          chmod +x dist/${{ matrix.artifact }}
+          chmod +x dist/${{ matrix.binary }}
 
-          tar -C dist -czf \
-            dist/${{ matrix.artifact }}.tar.gz \
-            ${{ matrix.artifact }}
+          tar -czf \
+            dist/${{ matrix.binary }}.tar.gz \
+            -C dist \
+            ${{ matrix.binary }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}.tar.gz
+          name: ${{ matrix.binary }}
+          path: dist/${{ matrix.binary }}.tar.gz
