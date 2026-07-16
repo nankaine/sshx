@@ -1,10 +1,78 @@
+name: Build static sshx
+
+on:
+  push:
+    tags:
+      - "v*"
+
+
+permissions:
+  contents: write
+
+
 jobs:
- job1:
-   runs-on: ubuntu-latest
-   steps:
-     - run: echo "Job 1"
- job2:
-   needs: job1
-   runs-on: ubuntu-latest
-   steps:
-     - run: echo "Job 2"
+
+  build:
+
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      - name: Checkout sshx
+        uses: actions/checkout@v4
+        with:
+          repository: nankaine/sshx
+
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+
+      - name: Install musl compiler
+        run: |
+          sudo apt update
+          sudo apt install -y musl-tools
+
+
+      - name: Build static binary
+        run: |
+
+          cargo build \
+            --release \
+            --package sshx \
+            --target x86_64-unknown-linux-musl
+
+
+      - name: Check binary
+
+        run: |
+
+          file target/x86_64-unknown-linux-musl/release/sshx
+
+          ldd target/x86_64-unknown-linux-musl/release/sshx || true
+
+
+
+      - name: Prepare release
+
+        run: |
+
+          mkdir dist
+
+          cp \
+          target/x86_64-unknown-linux-musl/release/sshx \
+          dist/sshx-linux-amd64
+
+
+
+      - name: Upload Release
+
+        uses: softprops/action-gh-release@v2
+
+        with:
+
+          files: |
+            dist/sshx-linux-amd64
