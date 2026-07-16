@@ -1,0 +1,86 @@
+name: Build sshx-server (AMD64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read Version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Restore Cargo Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build sshx-server
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo build \
+            --release \
+            --target x86_64-unknown-linux-musl \
+            --bin sshx-server
+
+      - name: Strip binary
+        run: |
+          strip target/x86_64-unknown-linux-musl/release/sshx-server || true
+
+      - name: Verify binary
+        run: |
+          file target/x86_64-unknown-linux-musl/release/sshx-server
+          ldd target/x86_64-unknown-linux-musl/release/sshx-server || true
+
+      - name: Package
+        run: |
+          mkdir dist
+
+          cp target/x86_64-unknown-linux-musl/release/sshx-server dist/
+
+          cp -r build dist/
+
+          tar -C dist \
+            -czf \
+            sshx-server-linux-amd64-v${{ steps.version.outputs.version }}.tar.gz \
+            .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshx-server-linux-amd64
+          path: sshx-server-linux-amd64-v${{ steps.version.outputs.version }}.tar.gz
