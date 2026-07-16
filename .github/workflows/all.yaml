@@ -1,4 +1,4 @@
-name: Build Static sshx All
+name: Build sshx (zigbuild)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.name }})
+    name: Build ${{ matrix.name }}
 
     runs-on: ubuntu-latest
 
@@ -19,19 +19,19 @@ jobs:
         include:
           - name: linux-amd64
             target: x86_64-unknown-linux-musl
-            binary: sshx-linux-amd64
+            artifact: sshx-linux-amd64
 
           - name: linux-arm64
             target: aarch64-unknown-linux-musl
-            binary: sshx-linux-arm64
+            artifact: sshx-linux-arm64
 
           - name: linux-armv7
             target: armv7-unknown-linux-musleabihf
-            binary: sshx-linux-armv7
+            artifact: sshx-linux-armv7
 
           - name: linux-armv6
             target: arm-unknown-linux-musleabihf
-            binary: sshx-linux-armv6
+            artifact: sshx-linux-armv6
 
     steps:
       - name: Checkout
@@ -39,53 +39,83 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: |
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+            armv7-unknown-linux-musleabihf
+            arm-unknown-linux-musleabihf
 
-      - name: Install protoc (Host)
+      - name: Install protoc
         uses: arduino/setup-protoc@v3
 
-      - name: Rust Cache
+      - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Cross
-        run: cargo install cross --locked
+      - name: Install Zig
+        shell: bash
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.14.1
+
+          wget -q https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
 
       - name: Show Versions
+        shell: bash
         run: |
+          export PATH="$PWD/zig-linux-x86_64-0.14.1:$PATH"
+
           rustc --version
           cargo --version
-          cross --version
+          zig version
           protoc --version
 
       - name: Build
+        shell: bash
         env:
-          CROSS_CONFIG: Cross.toml
+          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: |
-          cross build \
+          export PATH="$PWD/zig-linux-x86_64-0.14.1:$PATH"
+
+          cargo zigbuild \
             --release \
             --target ${{ matrix.target }} \
             -p sshx
 
-      - name: Verify Binary
+      - name: Verify
+        shell: bash
         run: |
           file target/${{ matrix.target }}/release/sshx
 
+          echo "========== ldd =========="
+          ldd target/${{ matrix.target }}/release/sshx || true
+
       - name: Package
+        shell: bash
         run: |
           mkdir -p dist
 
           cp \
             target/${{ matrix.target }}/release/sshx \
-            dist/${{ matrix.binary }}
+            dist/${{ matrix.artifact }}
 
-          chmod +x dist/${{ matrix.binary }}
+          chmod +x dist/${{ matrix.artifact }}
 
           tar -czf \
-            dist/${{ matrix.binary }}.tar.gz \
+            dist/${{ matrix.artifact }}.tar.gz \
             -C dist \
-            ${{ matrix.binary }}
+            ${{ matrix.artifact }}
 
-      - name: Upload Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}
-          path: dist/${{ matrix.binary }}.tar.gz
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
