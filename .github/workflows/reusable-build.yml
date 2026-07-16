@@ -147,5 +147,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.artifact }}
-          path: ${{ inputs.artifact }}.tar.gz
+          name: ${{ inputs.artifact }}-v${{ steps.version.outputs.version }}
+          path: ${{ inputs.artifact }}-v${{ steps.version.outputs.version }}.tar.gz
