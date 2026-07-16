@@ -1,4 +1,4 @@
-name: Build sshx All (Static Linux)
+name: Build sshx All(Static Linux)
 
 on:
   workflow_dispatch:
@@ -19,54 +19,67 @@ jobs:
         include:
           - name: linux-amd64
             target: x86_64-unknown-linux-musl
-            binary: sshx-linux-amd64
+            artifact: sshx-linux-amd64
 
           - name: linux-arm64
             target: aarch64-unknown-linux-musl
-            binary: sshx-linux-arm64
+            artifact: sshx-linux-arm64
 
           - name: linux-armv7
             target: armv7-unknown-linux-musleabihf
-            binary: sshx-linux-armv7
+            artifact: sshx-linux-armv7
 
           - name: linux-armv6
             target: arm-unknown-linux-musleabihf
-            binary: sshx-linux-armv6
+            artifact: sshx-linux-armv6
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install protoc
-        uses: arduino/setup-protoc@v2
+        uses: arduino/setup-protoc@v3
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: |
+            x86_64-unknown-linux-musl
+            aarch64-unknown-linux-musl
+            armv7-unknown-linux-musleabihf
+            arm-unknown-linux-musleabihf
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: latest
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Show versions
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
 
       - name: Build
+        env:
+          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: |
-          cross build \
+          cargo zigbuild \
             --release \
             --target ${{ matrix.target }} \
             -p sshx
 
-      - name: Verify Binary
+      - name: Verify
         run: |
           file target/${{ matrix.target }}/release/sshx
-
-      - name: Strip Binary
-        run: |
-          if command -v llvm-strip >/dev/null 2>&1; then
-            llvm-strip target/${{ matrix.target }}/release/sshx
-          elif command -v strip >/dev/null 2>&1; then
-            strip target/${{ matrix.target }}/release/sshx || true
-          fi
+          ldd target/${{ matrix.target }}/release/sshx || true
 
       - name: Package
         run: |
@@ -74,17 +87,16 @@ jobs:
 
           cp \
             target/${{ matrix.target }}/release/sshx \
-            dist/${{ matrix.binary }}
+            dist/${{ matrix.artifact }}
 
-          chmod +x dist/${{ matrix.binary }}
+          chmod +x dist/${{ matrix.artifact }}
 
-          tar -czf \
-            dist/${{ matrix.binary }}.tar.gz \
-            -C dist \
-            ${{ matrix.binary }}
+          tar -C dist -czf \
+            dist/${{ matrix.artifact }}.tar.gz \
+            ${{ matrix.artifact }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}
-          path: dist/${{ matrix.binary }}.tar.gz
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
