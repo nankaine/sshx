@@ -10,39 +10,43 @@ jobs:
   amd64:
     name: Build AMD64
     uses: ./.github/workflows/reusable-build.yml
-    secrets:
-      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}
+
     with:
       target: x86_64-unknown-linux-musl
       artifact: sshx-linux-amd64
+    secrets:
+      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}  
 
   arm64:
     name: Build ARM64
     uses: ./.github/workflows/reusable-build.yml
-    secrets:
-      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}
+
     with:
       target: aarch64-unknown-linux-musl
       artifact: sshx-linux-arm64
+    secrets:
+      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}  
 
   armv7:
     name: Build ARMv7
     uses: ./.github/workflows/reusable-build.yml
-    secrets:
-      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}
+
     with:
       target: armv7-unknown-linux-musleabihf
       artifact: sshx-linux-armv7
+    secrets:
+      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}  
 
   armv6:
     name: Build ARMv6
     uses: ./.github/workflows/reusable-build.yml
-    secrets:
-      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}
+
     with:
       target: arm-unknown-linux-musleabihf
       artifact: sshx-linux-armv6
       rustflags: "-C target-feature=+crt-static -C target-cpu=arm1176jzf-s"
+    secrets:
+      SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}  
 
   package:
     name: Package All Platforms

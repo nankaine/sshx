@@ -18,7 +18,11 @@ on:
         required: false
         type: string
         default: "-C target-feature=+crt-static"
-
+    # 临时增加
+    secrets:
+      SSHX_DEFAULT_SERVER:
+        required: true
+    # 临时增加    
 permissions:
   contents: read
 
