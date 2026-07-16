@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/reusable-build.yml
+    secrets: inherit
 
     with:
       target: aarch64-unknown-linux-musl

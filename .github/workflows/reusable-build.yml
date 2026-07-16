@@ -4,14 +4,17 @@ on:
   workflow_call:
     inputs:
       target:
+        description: Rust target triple
         required: true
         type: string
 
       artifact:
+        description: Artifact name
         required: true
         type: string
 
       rustflags:
+        description: Extra rustflags
         required: false
         type: string
         default: "-C target-feature=+crt-static"
@@ -21,13 +24,34 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Patch default SSHX server
+        shell: bash
+        env:
+          SSHX_DEFAULT_SERVER: ${{ secrets.SSHX_DEFAULT_SERVER }}
+        run: |
+          set -e
+
+          if [ -z "$SSHX_DEFAULT_SERVER" ]; then
+            echo "::error::Repository Secret SSHX_DEFAULT_SERVER is not set."
+            exit 1
+          fi
+
+          sed -i \
+            "s|default_value = \"https://sshx.io\"|default_value = \"${SSHX_DEFAULT_SERVER}\"|" \
+            crates/sshx/src/main.rs
+
+          if grep -q 'default_value = "https://sshx.io"' crates/sshx/src/main.rs; then
+            echo "::error::Failed to patch default server."
+            exit 1
+          fi
+
+          echo "Default server patched."
 
       - name: Install protoc
         uses: arduino/setup-protoc@v3
@@ -37,10 +61,11 @@ jobs:
         with:
           targets: ${{ inputs.target }}
 
-      - name: Rust Cache
+      - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
       - name: Install Zig
+        shell: bash
         run: |
           set -eux
 
@@ -53,16 +78,20 @@ jobs:
           echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
       - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild --locked
+        shell: bash
+        run: |
+          cargo install cargo-zigbuild --locked
 
-      - name: Show Environment
+      - name: Show tool versions
+        shell: bash
         run: |
           rustc --version
           cargo --version
           zig version
           protoc --version
 
-      - name: Build
+      - name: Build sshx
+        shell: bash
         env:
           RUSTFLAGS: ${{ inputs.rustflags }}
         run: |
@@ -71,13 +100,16 @@ jobs:
             --target ${{ inputs.target }} \
             -p sshx
 
-      - name: Strip
+      - name: Strip binary
+        shell: bash
         run: |
           llvm-strip target/${{ inputs.target }}/release/sshx || true
           strip target/${{ inputs.target }}/release/sshx || true
 
-      - name: Verify
+      - name: Verify binary
+        shell: bash
         run: |
+          echo "========== file =========="
           file target/${{ inputs.target }}/release/sshx
 
           echo "========== readelf =========="
@@ -87,16 +119,18 @@ jobs:
           ldd target/${{ inputs.target }}/release/sshx || true
 
       - name: Package
+        shell: bash
         run: |
           mkdir -p dist
 
           cp target/${{ inputs.target }}/release/sshx dist/
 
-          tar -C dist -czf \
+          tar -C dist \
+            -czf \
             ${{ inputs.artifact }}.tar.gz \
             sshx
 
-      - name: Upload
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact }}
