@@ -1,0 +1,79 @@
+name: Build ARM64 (cargo-zigbuild)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Zig
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.13.0
+
+          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Show Environment
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
+
+      - name: Build
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo zigbuild \
+            --release \
+            --target aarch64-unknown-linux-musl \
+            -p sshx
+
+      - name: Strip
+        run: |
+          llvm-strip target/aarch64-unknown-linux-musl/release/sshx || true
+          strip target/aarch64-unknown-linux-musl/release/sshx || true
+
+      - name: Verify
+        run: |
+          file target/aarch64-unknown-linux-musl/release/sshx
+          ldd target/aarch64-unknown-linux-musl/release/sshx || true
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/aarch64-unknown-linux-musl/release/sshx dist/
+          tar -C dist -czf sshx-linux-arm64.tar.gz sshx
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshx-linux-arm64
+          path: sshx-linux-arm64.tar.gz

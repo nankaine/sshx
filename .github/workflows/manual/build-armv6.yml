@@ -1,0 +1,88 @@
+name: Build ARMv6 (cargo-zigbuild)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: arm-unknown-linux-musleabihf
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Zig
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.13.0
+
+          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Show Environment
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
+
+      - name: Build
+        env:
+          RUSTFLAGS: >-
+            -C target-feature=+crt-static
+            -C target-cpu=arm1176jzf-s
+        run: |
+          cargo zigbuild \
+            --release \
+            --target arm-unknown-linux-musleabihf \
+            -p sshx
+
+      - name: Strip
+        run: |
+          llvm-strip target/arm-unknown-linux-musleabihf/release/sshx || true
+          strip target/arm-unknown-linux-musleabihf/release/sshx || true
+
+      - name: Verify
+        run: |
+          file target/arm-unknown-linux-musleabihf/release/sshx
+
+          echo "========== readelf =========="
+          readelf -l target/arm-unknown-linux-musleabihf/release/sshx | grep interpreter || true
+
+          echo "========== ldd =========="
+          ldd target/arm-unknown-linux-musleabihf/release/sshx || true
+
+      - name: Package
+        run: |
+          mkdir -p dist
+
+          cp target/arm-unknown-linux-musleabihf/release/sshx dist/
+
+          tar -C dist -czf sshx-linux-armv6.tar.gz sshx
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshx-linux-armv6
+          path: sshx-linux-armv6.tar.gz

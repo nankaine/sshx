@@ -1,0 +1,103 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+
+      artifact:
+        required: true
+        type: string
+
+      rustflags:
+        required: false
+        type: string
+        default: "-C target-feature=+crt-static"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ inputs.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Zig
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.13.0
+
+          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Show Environment
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
+
+      - name: Build
+        env:
+          RUSTFLAGS: ${{ inputs.rustflags }}
+        run: |
+          cargo zigbuild \
+            --release \
+            --target ${{ inputs.target }} \
+            -p sshx
+
+      - name: Strip
+        run: |
+          llvm-strip target/${{ inputs.target }}/release/sshx || true
+          strip target/${{ inputs.target }}/release/sshx || true
+
+      - name: Verify
+        run: |
+          file target/${{ inputs.target }}/release/sshx
+
+          echo "========== readelf =========="
+          readelf -l target/${{ inputs.target }}/release/sshx | grep interpreter || true
+
+          echo "========== ldd =========="
+          ldd target/${{ inputs.target }}/release/sshx || true
+
+      - name: Package
+        run: |
+          mkdir -p dist
+
+          cp target/${{ inputs.target }}/release/sshx dist/
+
+          tar -C dist -czf \
+            ${{ inputs.artifact }}.tar.gz \
+            sshx
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: ${{ inputs.artifact }}.tar.gz

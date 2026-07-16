@@ -1,0 +1,79 @@
+name: Build ARMv7 (cargo-zigbuild)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-musleabihf
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Zig
+        run: |
+          set -eux
+
+          ZIG_VERSION=0.13.0
+
+          wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
+
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Show Environment
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
+
+      - name: Build
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo zigbuild \
+            --release \
+            --target armv7-unknown-linux-musleabihf \
+            -p sshx
+
+      - name: Strip
+        run: |
+          llvm-strip target/armv7-unknown-linux-musleabihf/release/sshx || true
+          strip target/armv7-unknown-linux-musleabihf/release/sshx || true
+
+      - name: Verify
+        run: |
+          file target/armv7-unknown-linux-musleabihf/release/sshx
+          ldd target/armv7-unknown-linux-musleabihf/release/sshx || true
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/armv7-unknown-linux-musleabihf/release/sshx dist/
+          tar -C dist -czf sshx-linux-armv7.tar.gz sshx
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshx-linux-armv7
+          path: sshx-linux-armv7.tar.gz
