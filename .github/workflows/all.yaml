@@ -1,0 +1,90 @@
+name: Build sshx All (Static Linux)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - name: linux-amd64
+            target: x86_64-unknown-linux-musl
+            binary: sshx-linux-amd64
+
+          - name: linux-arm64
+            target: aarch64-unknown-linux-musl
+            binary: sshx-linux-arm64
+
+          - name: linux-armv7
+            target: armv7-unknown-linux-musleabihf
+            binary: sshx-linux-armv7
+
+          - name: linux-armv6
+            target: arm-unknown-linux-musleabihf
+            binary: sshx-linux-armv6
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        run: |
+          cross build \
+            --release \
+            --target ${{ matrix.target }} \
+            -p sshx
+
+      - name: Verify Binary
+        run: |
+          file target/${{ matrix.target }}/release/sshx
+
+      - name: Strip Binary
+        run: |
+          if command -v llvm-strip >/dev/null 2>&1; then
+            llvm-strip target/${{ matrix.target }}/release/sshx
+          elif command -v strip >/dev/null 2>&1; then
+            strip target/${{ matrix.target }}/release/sshx || true
+          fi
+
+      - name: Package
+        run: |
+          mkdir -p dist
+
+          cp \
+            target/${{ matrix.target }}/release/sshx \
+            dist/${{ matrix.binary }}
+
+          chmod +x dist/${{ matrix.binary }}
+
+          tar -czf \
+            dist/${{ matrix.binary }}.tar.gz \
+            -C dist \
+            ${{ matrix.binary }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: dist/${{ matrix.binary }}.tar.gz
