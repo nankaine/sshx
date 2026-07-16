@@ -34,6 +34,16 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Read Version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+          echo "Detected version: $VERSION"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"  
+
       - name: Patch default SSHX server
         shell: bash
         env:
@@ -131,7 +141,7 @@ jobs:
 
           tar -C dist \
             -czf \
-            ${{ inputs.artifact }}.tar.gz \
+            ${{ inputs.artifact }}-v${{ steps.version.outputs.version }}.tar.gz \
             sshx
 
       - name: Upload artifact
