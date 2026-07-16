@@ -1,4 +1,4 @@
-name: Build ARM64 (Zig)
+name: Build ARM64 (cargo-zigbuild)
 
 on:
   workflow_dispatch:
@@ -11,18 +11,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: arduino/setup-protoc@v2
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Zig
         run: |
+          set -eux
+
           ZIG_VERSION=0.13.0
 
           wget https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz
@@ -31,41 +37,43 @@ jobs:
 
           echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
-      - name: Configure Cargo
-        run: |
-          mkdir -p ~/.cargo
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
 
-          cat > ~/.cargo/config.toml <<EOF
-          [target.aarch64-unknown-linux-musl]
-          linker = "$(pwd)/tools/zigcc-aarch64"
-          ar = "$(pwd)/tools/zigar"
-          EOF
+      - name: Show Environment
+        run: |
+          rustc --version
+          cargo --version
+          zig version
+          protoc --version
 
       - name: Build
         env:
-          CC_aarch64_unknown_linux_musl: ${{ github.workspace }}/tools/zigcc-aarch64
-          AR_aarch64_unknown_linux_musl: ${{ github.workspace }}/tools/zigar
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: ${{ github.workspace }}/tools/zigcc-aarch64
-          RUSTFLAGS: -C target-feature=+crt-static
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
-          cargo build \
+          cargo zigbuild \
             --release \
             --target aarch64-unknown-linux-musl \
             -p sshx
 
+      - name: Strip
+        run: |
+          llvm-strip target/aarch64-unknown-linux-musl/release/sshx || true
+          strip target/aarch64-unknown-linux-musl/release/sshx || true
+
       - name: Verify
         run: |
           file target/aarch64-unknown-linux-musl/release/sshx
-
           ldd target/aarch64-unknown-linux-musl/release/sshx || true
 
       - name: Package
         run: |
-          mkdir dist
+          mkdir -p dist
           cp target/aarch64-unknown-linux-musl/release/sshx dist/
           tar -C dist -czf sshx-linux-arm64.tar.gz sshx
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload
+        uses: actions/upload-artifact@v4
         with:
           name: sshx-linux-arm64
           path: sshx-linux-arm64.tar.gz
