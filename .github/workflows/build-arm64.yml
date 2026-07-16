@@ -1,4 +1,4 @@
-name: Build ARM64 (zig cc)
+name: Build ARM64 (Zig)
 
 on:
   workflow_dispatch:
@@ -11,19 +11,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install protoc
-        uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@v2
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl
 
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install Zig
         run: |
@@ -33,39 +29,24 @@ jobs:
 
           tar -xf zig-linux-x86_64-${ZIG_VERSION}.tar.xz
 
-          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> $GITHUB_PATH
+          echo "$PWD/zig-linux-x86_64-${ZIG_VERSION}" >> "$GITHUB_PATH"
 
-      - name: Install cargo config
+      - name: Configure Cargo
         run: |
           mkdir -p ~/.cargo
 
-          cat > ~/.cargo/config.toml <<'EOF'
+          cat > ~/.cargo/config.toml <<EOF
           [target.aarch64-unknown-linux-musl]
-          linker = "zig"
-          ar = "zig"
+          linker = "$(pwd)/tools/zigcc-aarch64"
+          ar = "$(pwd)/tools/zigar"
           EOF
-
-      - name: Show Versions
-        run: |
-          export PATH="$PWD/zig-linux-x86_64-0.13.0:$PATH"
-
-          zig version
-          rustc --version
-          cargo --version
-          protoc --version
 
       - name: Build
         env:
-          PATH: ${{ github.workspace }}/zig-linux-x86_64-0.13.0:${{ env.PATH }}
-
-          CC_aarch64_unknown_linux_musl: "zig cc -target aarch64-linux-musl"
-
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: zig
-
-          AR_aarch64_unknown_linux_musl: "zig ar"
-
-          RUSTFLAGS: "-C target-feature=+crt-static"
-
+          CC_aarch64_unknown_linux_musl: ${{ github.workspace }}/tools/zigcc-aarch64
+          AR_aarch64_unknown_linux_musl: ${{ github.workspace }}/tools/zigar
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: ${{ github.workspace }}/tools/zigcc-aarch64
+          RUSTFLAGS: -C target-feature=+crt-static
         run: |
           cargo build \
             --release \
@@ -76,16 +57,15 @@ jobs:
         run: |
           file target/aarch64-unknown-linux-musl/release/sshx
 
+          ldd target/aarch64-unknown-linux-musl/release/sshx || true
+
       - name: Package
         run: |
           mkdir dist
-
           cp target/aarch64-unknown-linux-musl/release/sshx dist/
-
           tar -C dist -czf sshx-linux-arm64.tar.gz sshx
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: sshx-linux-arm64
           path: sshx-linux-arm64.tar.gz
